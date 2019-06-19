@@ -315,7 +315,20 @@ Json::Value obj_value(Json::objectValue); // {}
    * \endcode
    */
   Value(const StaticString& value);
+#if JSONCPP_USING_SECURE_MEMORY
+  static char* duplicateAndPrefixStringValue(const char* value,unsigned int length);
+  static void decodePrefixedString(bool isPrefixed, char const* prefixed, unsigned* length, char const** value);
+  static void jsonFailMessage(const std::string& message);
+
+  template<typename CharT, typename Traits, typename Allocator>
+  Value(const std::basic_string<CharT, Traits, Allocator>& value) {
+    initBasic(stringValue, true);
+    value_.string_ =
+        duplicateAndPrefixStringValue(value.data(), static_cast<unsigned>(value.length()));
+  }
+#else
   Value(const JSONCPP_STRING& value); ///< Copy data() til size(). Embedded zeroes too.
+#endif
 #ifdef JSON_USE_CPPTL
   Value(const CppTL::ConstString& value);
 #endif
@@ -356,8 +369,35 @@ Json::Value obj_value(Json::objectValue); // {}
   const char* asCString() const; ///< Embedded zeroes could cause you trouble!
 #if JSONCPP_USING_SECURE_MEMORY
   unsigned getCStringLength() const; //Allows you to understand the length of the CString
-#endif
+  template<typename T = JSONCPP_STRING>
+  T asString() const { ///< Embedded zeroes are possible.
+    switch (type_) {
+    case nullValue:
+      return "";
+    case stringValue:
+    {
+      if (value_.string_ == 0) return "";
+      unsigned this_len;
+      char const* this_str;
+      decodePrefixedString(this->allocated_, this->value_.string_, &this_len, &this_str);
+      return T(this_str, this_str + this_len);
+    }
+    case booleanValue:
+      return value_.bool_ ? "true" : "false";
+    case intValue:
+      return T(std::to_string(value_.int_).c_str());
+    case uintValue:
+      return T(std::to_string(value_.uint_).c_str());
+    case realValue:
+      return T(std::to_string(value_.real_).c_str());
+    default:
+      jsonFailMessage("Type is not convertible to string");
+      return T();
+    }
+  }
+#else
   JSONCPP_STRING asString() const; ///< Embedded zeroes are possible.
+#endif
   /** Get raw char* of string-value.
    *  \return false if !string. (Seg-fault if str or end are NULL.)
    */
@@ -463,6 +503,21 @@ Json::Value obj_value(Json::objectValue); // {}
   /// Access an object value by name, returns null if there is no member with
   /// that name.
   const Value& operator[](const char* key) const;
+#if JSONCPP_USING_SECURE_MEMORY
+  /// Access an object value by name, create a null member if it does not exist.
+  /// \param key may contain embedded nulls.
+  template<typename CharT, typename Traits, typename Allocator>
+  Value& operator[](const std::basic_string<CharT, Traits, Allocator>& key) {
+    return this->operator[](reinterpret_cast<const char*>(key.data()));
+  }
+  /// Access an object value by name, returns null if there is no member with
+  /// that name.
+  /// \param key may contain embedded nulls.
+  template<typename CharT, typename Traits, typename Allocator>
+  const Value& operator[](const std::basic_string<CharT, Traits, Allocator>& key) const {
+    return this->operator[](reinterpret_cast<const char*>(key.data()));
+  }
+#else
   /// Access an object value by name, create a null member if it does not exist.
   /// \param key may contain embedded nulls.
   Value& operator[](const JSONCPP_STRING& key);
@@ -470,6 +525,7 @@ Json::Value obj_value(Json::objectValue); // {}
   /// that name.
   /// \param key may contain embedded nulls.
   const Value& operator[](const JSONCPP_STRING& key) const;
+#endif
   /** \brief Access an object value by name, create a null member if it does not
    exist.
 
@@ -497,10 +553,18 @@ Json::Value obj_value(Json::objectValue); // {}
   /// \note deep copy
   /// \note key may contain embedded nulls.
   Value get(const char* begin, const char* end, const Value& defaultValue) const;
+#if JSONCPP_USING_SECURE_MEMORY
+  template<typename CharT, typename Traits, typename Allocator>
+  Value get(std::basic_string<CharT, Traits, Allocator> const& key, Value const& defaultValue) const
+  {
+    return get(key.data(), key.data() + key.length(), defaultValue);
+  }
+#else
   /// Return the member named key if it exist, defaultValue otherwise.
   /// \note deep copy
   /// \param key may contain embedded nulls.
   Value get(const JSONCPP_STRING& key, const Value& defaultValue) const;
+#endif
 #ifdef JSON_USE_CPPTL
   /// Return the member named key if it exist, defaultValue otherwise.
   /// \note deep copy
@@ -522,13 +586,40 @@ Json::Value obj_value(Json::objectValue); // {}
   /// \post type() is unchanged
   /// \deprecated
   void removeMember(const char* key);
+
+  /// Same as removeMember(JSONCPP_STRING const& key, Value* removed)
+  bool removeMember(const char* begin, const char* end, Value* removed);
+
+#if JSONCPP_USING_SECURE_MEMORY
   /// Same as removeMember(const char*)
   /// \param key may contain embedded nulls.
   /// \deprecated
-  void removeMember(const JSONCPP_STRING& key);
+  template<typename CharT, typename Traits, typename Allocator>
+  Value removeMember(const std::basic_string<CharT, Traits, Allocator>& key) {
+    return removeMember(key.c_str());
+  }
+#else
+  /// Same as removeMember(const char*)
+  /// \param key may contain embedded nulls.
+  /// \deprecated
+  Value removeMember(const JSONCPP_STRING& key);
+#endif
   /// Same as removeMember(const char* begin, const char* end, Value* removed),
   /// but 'key' is null-terminated.
   bool removeMember(const char* key, Value* removed);
+
+#if JSONCPP_USING_SECURE_MEMORY
+  /** \brief Remove the named map member.
+
+      Update 'removed' iff removed.
+      \param key may contain embedded nulls.
+      \return true iff removed (no exceptions)
+  */
+  template<typename CharT, typename Traits, typename Allocator>
+  bool removeMember(std::basic_string<CharT, Traits, Allocator> const& key, Value* removed) {
+    return removeMember(key.data(), key.data() + key.length(), removed);
+  }
+#else
   /** \brief Remove the named map member.
 
       Update 'removed' iff removed.
@@ -536,8 +627,7 @@ Json::Value obj_value(Json::objectValue); // {}
       \return true iff removed (no exceptions)
   */
   bool removeMember(JSONCPP_STRING const& key, Value* removed);
-  /// Same as removeMember(JSONCPP_STRING const& key, Value* removed)
-  bool removeMember(const char* begin, const char* end, Value* removed);
+#endif
   /** \brief Remove the indexed array element.
 
       O(n) expensive operations.
@@ -549,11 +639,20 @@ Json::Value obj_value(Json::objectValue); // {}
   /// Return true if the object has a member named key.
   /// \note 'key' must be null-terminated.
   bool isMember(const char* key) const;
+  /// Same as isMember(JSONCPP_STRING const& key)const
+  bool isMember(const char* begin, const char* end) const;
+#if JSONCPP_USING_SECURE_MEMORY
+  /// Return true if the object has a member named key.
+  /// \param key may contain embedded nulls.
+  template<typename CharT, typename Traits, typename Allocator>
+  bool isMember(const std::basic_string<CharT, Traits, Allocator>& key) const {
+    return isMember(key.data(), key.data() + key.length());
+  }
+#else
   /// Return true if the object has a member named key.
   /// \param key may contain embedded nulls.
   bool isMember(const JSONCPP_STRING& key) const;
-  /// Same as isMember(JSONCPP_STRING const& key)const
-  bool isMember(const char* begin, const char* end) const;
+#endif
 #ifdef JSON_USE_CPPTL
   /// Return true if the object has a member named key.
   bool isMember(const CppTL::ConstString& key) const;
@@ -583,6 +682,13 @@ Json::Value obj_value(Json::objectValue); // {}
   JSONCPP_STRING getComment(CommentPlacement placement) const;
 
   JSONCPP_STRING toStyledString() const;
+#if JSONCPP_USING_SECURE_MEMORY
+  template<class T>
+  T toStyledStringT() const {
+    auto d = toStyledString();
+    return T(d.begin(), d.end());
+  }
+#endif
 
   const_iterator begin() const;
   const_iterator end() const;

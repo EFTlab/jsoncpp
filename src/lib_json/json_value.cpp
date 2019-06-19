@@ -115,7 +115,11 @@ static inline char* duplicateStringValue(const char* value,
 
 /* Record the length as a prefix.
  */
+#if JSONCPP_USING_SECURE_MEMORY
+char* Value::duplicateAndPrefixStringValue(
+#else
 static inline char* duplicateAndPrefixStringValue(
+#endif
     const char* value,
     unsigned int length)
 {
@@ -136,7 +140,11 @@ static inline char* duplicateAndPrefixStringValue(
   newString[actualLength - 1U] = 0; // to avoid buffer over-run accidents by users later
   return newString;
 }
+#if JSONCPP_USING_SECURE_MEMORY
+void Value::decodePrefixedString(
+#else
 inline static void decodePrefixedString(
+#endif
     bool isPrefixed, char const* prefixed,
     unsigned* length, char const** value)
 {
@@ -154,7 +162,7 @@ inline static void decodePrefixedString(
 static inline void releasePrefixedStringValue(char* value) {
   unsigned length = 0;
   char const* valueDecoded;
-  decodePrefixedString(true, value, &length, &valueDecoded);
+  Value::decodePrefixedString(true, value, &length, &valueDecoded);
   size_t const size = sizeof(unsigned) + length + 1U;
   memset(value, 0, size);
   free(value);
@@ -418,11 +426,15 @@ Value::Value(const char* beginValue, const char* endValue) {
       duplicateAndPrefixStringValue(beginValue, static_cast<unsigned>(endValue - beginValue));
 }
 
+#if JSONCPP_USING_SECURE_MEMORY
+//Not used in secure mode, instead we use template
+#else
 Value::Value(const JSONCPP_STRING& value) {
   initBasic(stringValue, true);
   value_.string_ =
       duplicateAndPrefixStringValue(value.data(), static_cast<unsigned>(value.length()));
 }
+#endif
 
 Value::Value(const StaticString& value) {
   initBasic(stringValue);
@@ -674,6 +686,12 @@ const char* Value::asCString() const {
 }
 
 #if JSONCPP_USING_SECURE_MEMORY
+void Value::jsonFailMessage(const std::string& message) {
+  JSON_FAIL_MESSAGE(message);
+}
+#endif
+
+#if JSONCPP_USING_SECURE_MEMORY
 unsigned Value::getCStringLength() const {
   JSON_ASSERT_MESSAGE(type_ == stringValue,
 	                  "in Json::Value::asCString(): requires stringValue");
@@ -694,6 +712,9 @@ bool Value::getString(char const** str, char const** cend) const {
   return true;
 }
 
+#if JSONCPP_USING_SECURE_MEMORY
+//Unused, in header
+#else
 JSONCPP_STRING Value::asString() const {
   switch (type_) {
   case nullValue:
@@ -718,6 +739,7 @@ JSONCPP_STRING Value::asString() const {
     JSON_FAIL_MESSAGE("Type is not convertible to string");
   }
 }
+#endif
 
 #ifdef JSON_USE_CPPTL
 CppTL::ConstString Value::asConstString() const {
@@ -1114,20 +1136,28 @@ const Value& Value::operator[](const char* key) const
   if (!found) return nullSingleton();
   return *found;
 }
+#if JSONCPP_USING_SECURE_MEMORY
+//Not used
+#else
 Value const& Value::operator[](JSONCPP_STRING const& key) const
 {
   Value const* found = find(key.data(), key.data() + key.length());
   if (!found) return nullSingleton();
   return *found;
 }
+#endif
 
 Value& Value::operator[](const char* key) {
   return resolveReference(key, key + strlen(key));
 }
 
+#if JSONCPP_USING_SECURE_MEMORY
+//Not used
+#else
 Value& Value::operator[](const JSONCPP_STRING& key) {
   return resolveReference(key.data(), key.data() + key.length());
 }
+#endif
 
 Value& Value::operator[](const StaticString& key) {
   return resolveReference(key.c_str());
@@ -1160,11 +1190,14 @@ Value Value::get(char const* key, Value const& defaultValue) const
 {
   return get(key, key + strlen(key), defaultValue);
 }
+#if JSONCPP_USING_SECURE_MEMORY
+//Not used
+#else
 Value Value::get(JSONCPP_STRING const& key, Value const& defaultValue) const
 {
   return get(key.data(), key.data() + key.length(), defaultValue);
 }
-
+#endif
 
 bool Value::removeMember(const char* key, const char* cend, Value* removed)
 {
@@ -1183,10 +1216,14 @@ bool Value::removeMember(const char* key, Value* removed)
 {
   return removeMember(key, key + strlen(key), removed);
 }
+#if JSONCPP_USING_SECURE_MEMORY
+//Not used
+#else
 bool Value::removeMember(JSONCPP_STRING const& key, Value* removed)
 {
   return removeMember(key.data(), key.data() + key.length(), removed);
 }
+#endif
 void Value::removeMember(const char* key)
 {
   JSON_ASSERT_MESSAGE(type_ == nullValue || type_ == objectValue,
@@ -1197,10 +1234,15 @@ void Value::removeMember(const char* key)
   CZString actualKey(key, unsigned(strlen(key)), CZString::noDuplication);
   value_.map_->erase(actualKey);
 }
-void Value::removeMember(const JSONCPP_STRING& key)
+
+#if JSONCPP_USING_SECURE_MEMORY
+//Not used
+#else
+Value Value::removeMember(const JSONCPP_STRING& key)
 {
   removeMember(key.c_str());
 }
+#endif
 
 bool Value::removeIndex(ArrayIndex index, Value* removed) {
   if (type_ != arrayValue) {
@@ -1241,10 +1283,15 @@ bool Value::isMember(char const* key) const
 {
   return isMember(key, key + strlen(key));
 }
+
+#if JSONCPP_USING_SECURE_MEMORY
+//Not used
+#else
 bool Value::isMember(JSONCPP_STRING const& key) const
 {
   return isMember(key.data(), key.data() + key.length());
 }
+#endif
 
 #ifdef JSON_USE_CPPTL
 bool Value::isMember(const CppTL::ConstString& key) const {
