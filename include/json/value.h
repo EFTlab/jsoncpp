@@ -23,7 +23,7 @@
 #endif
 
 //Conditional NORETURN attribute on the throw functions would:
-// a) suppress false positives from static code analysis 
+// a) suppress false positives from static code analysis
 // b) possibly improve optimization opportunities.
 #if !defined(JSONCPP_NORETURN)
 #  if defined(_MSC_VER)
@@ -64,7 +64,7 @@ protected:
 /** Exceptions which the user cannot easily avoid.
  *
  * E.g. out-of-memory (when we use malloc), stack-overflow, malicious input
- * 
+ *
  * \remark derived from Json::Exception
  */
 class JSON_API RuntimeError : public Exception {
@@ -75,7 +75,7 @@ public:
 /** Exceptions thrown by JSON_ASSERT/JSON_FAIL macros.
  *
  * These are precondition-violations (user bugs) and internal errors (our bugs).
- * 
+ *
  * \remark derived from Json::Exception
  */
 class JSON_API LogicError : public Exception {
@@ -307,7 +307,20 @@ Json::Value obj_value(Json::objectValue); // {}
    * \endcode
    */
   Value(const StaticString& value);
+#if JSONCPP_USING_SECURE_MEMORY
+  static char* duplicateAndPrefixStringValue(const char* value,unsigned int length);
+  static void decodePrefixedString(bool isPrefixed, char const* prefixed, unsigned* length, char const** value);
+  static void jsonFailMessage(const std::string& message);
+
+  template<typename CharT, typename Traits, typename Allocator>
+  Value(const std::basic_string<CharT, Traits, Allocator>& value) {
+    initBasic(stringValue, true);
+    value_.string_ =
+        duplicateAndPrefixStringValue(value.data(), static_cast<unsigned>(value.length()));
+  }
+#else
   Value(const JSONCPP_STRING& value); ///< Copy data() til size(). Embedded zeroes too.
+#endif
 #ifdef JSON_USE_CPPTL
   Value(const CppTL::ConstString& value);
 #endif
@@ -342,8 +355,35 @@ Json::Value obj_value(Json::objectValue); // {}
   const char* asCString() const; ///< Embedded zeroes could cause you trouble!
 #if JSONCPP_USING_SECURE_MEMORY
   unsigned getCStringLength() const; //Allows you to understand the length of the CString
-#endif
+  template<typename T = JSONCPP_STRING>
+  T asString() const { ///< Embedded zeroes are possible.
+    switch (type_) {
+    case nullValue:
+      return "";
+    case stringValue:
+    {
+      if (value_.string_ == 0) return "";
+      unsigned this_len;
+      char const* this_str;
+      decodePrefixedString(this->allocated_, this->value_.string_, &this_len, &this_str);
+      return T(this_str, this_str + this_len);
+    }
+    case booleanValue:
+      return value_.bool_ ? "true" : "false";
+    case intValue:
+      return T(std::to_string(value_.int_).c_str());
+    case uintValue:
+      return T(std::to_string(value_.uint_).c_str());
+    case realValue:
+      return T(std::to_string(value_.real_).c_str());
+    default:
+      jsonFailMessage("Type is not convertible to string");
+      return T();
+    }
+  }
+#else
   JSONCPP_STRING asString() const; ///< Embedded zeroes are possible.
+#endif
   /** Get raw char* of string-value.
    *  \return false if !string. (Seg-fault if str or end are NULL.)
    */
@@ -445,6 +485,21 @@ Json::Value obj_value(Json::objectValue); // {}
   /// Access an object value by name, returns null if there is no member with
   /// that name.
   const Value& operator[](const char* key) const;
+#if JSONCPP_USING_SECURE_MEMORY
+  /// Access an object value by name, create a null member if it does not exist.
+  /// \param key may contain embedded nulls.
+  template<typename CharT, typename Traits, typename Allocator>
+  Value& operator[](const std::basic_string<CharT, Traits, Allocator>& key) {
+    return this->operator[](reinterpret_cast<const char*>(key.data()));
+  }
+  /// Access an object value by name, returns null if there is no member with
+  /// that name.
+  /// \param key may contain embedded nulls.
+  template<typename CharT, typename Traits, typename Allocator>
+  const Value& operator[](const std::basic_string<CharT, Traits, Allocator>& key) const {
+    return this->operator[](reinterpret_cast<const char*>(key.data()));
+  }
+#else
   /// Access an object value by name, create a null member if it does not exist.
   /// \param key may contain embedded nulls.
   Value& operator[](const JSONCPP_STRING& key);
@@ -452,6 +507,7 @@ Json::Value obj_value(Json::objectValue); // {}
   /// that name.
   /// \param key may contain embedded nulls.
   const Value& operator[](const JSONCPP_STRING& key) const;
+#endif
   /** \brief Access an object value by name, create a null member if it does not
    exist.
 
@@ -479,10 +535,18 @@ Json::Value obj_value(Json::objectValue); // {}
   /// \note deep copy
   /// \note key may contain embedded nulls.
   Value get(const char* begin, const char* end, const Value& defaultValue) const;
+#if JSONCPP_USING_SECURE_MEMORY
+  template<typename CharT, typename Traits, typename Allocator>
+  Value get(std::basic_string<CharT, Traits, Allocator> const& key, Value const& defaultValue) const
+  {
+    return get(key.data(), key.data() + key.length(), defaultValue);
+  }
+#else
   /// Return the member named key if it exist, defaultValue otherwise.
   /// \note deep copy
   /// \param key may contain embedded nulls.
   Value get(const JSONCPP_STRING& key, const Value& defaultValue) const;
+#endif
 #ifdef JSON_USE_CPPTL
   /// Return the member named key if it exist, defaultValue otherwise.
   /// \note deep copy
