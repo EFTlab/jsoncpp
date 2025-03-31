@@ -392,16 +392,18 @@ public:
   unsigned getCStringLength() const; //Allows you to understand the length of the CString
   template<typename T = JSONCPP_STRING>
   T asString() const { ///< Embedded zeroes are possible.
-    switch (type_) {
+    switch (type()) {
     case nullValue:
       return "";
     case stringValue:
     {
-      if (value_.string_ == 0) return "";
+      if (value_.string_ == nullptr)
+      return "";
       unsigned this_len;
       char const* this_str;
-      decodePrefixedString(this->allocated_, this->value_.string_, &this_len, &this_str);
-      return T(this_str, this_str + this_len);
+      decodePrefixedString(this->isAllocated(), this->value_.string_, &this_len,
+                          &this_str);
+      return T(this_str, this_len);
     }
     case booleanValue:
       return value_.bool_ ? "true" : "false";
@@ -589,9 +591,6 @@ public:
   /// \post type() is unchanged
   void removeMember(const char* key);
 
-  /// Same as removeMember(JSONCPP_STRING const& key, Value* removed)
-  bool removeMember(const char* begin, const char* end, Value* removed);
-
 #if JSONCPP_USING_SECURE_MEMORY
   /// Same as removeMember(const char*)
   /// \param key may contain embedded nulls.
@@ -643,8 +642,6 @@ public:
   /// Return true if the object has a member named key.
   /// \note 'key' must be null-terminated.
   bool isMember(const char* key) const;
-  /// Same as isMember(JSONCPP_STRING const& key)const
-  bool isMember(const char* begin, const char* end) const;
 #if JSONCPP_USING_SECURE_MEMORY
   /// Return true if the object has a member named key.
   /// \param key may contain embedded nulls.

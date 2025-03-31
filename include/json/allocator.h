@@ -8,6 +8,11 @@
 
 #include <cstring>
 #include <memory>
+#if defined(__STDC_LIB_EXT1__) && defined(__STDC_WANT_LIB_EXT1__) && __STDC_WANT_LIB_EXT1__ == 1
+//We have memset_s from cstring
+#else
+#include <algorithm>
+#endif
 
 #pragma pack(push)
 #pragma pack()
@@ -39,7 +44,12 @@ public:
    */
   void deallocate(pointer p, size_type n) {
     // memset_s is used because memset may be optimized away by the compiler
+#if defined(__STDC_LIB_EXT1__) && defined(__STDC_WANT_LIB_EXT1__) && __STDC_WANT_LIB_EXT1__ == 1
     memset_s(p, n * sizeof(T), 0, n * sizeof(T));
+#else
+    // fallback for systems without memset_s (e.g., most Linux distros)
+    std::fill_n(p, n, T());
+#endif
     // free using "global operator delete"
     ::operator delete(p);
   }

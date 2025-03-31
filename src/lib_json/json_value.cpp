@@ -131,7 +131,7 @@ static inline char* duplicateStringValue(const char* value, size_t length) {
 /* Record the length as a prefix.
  */
 #if JSONCPP_USING_SECURE_MEMORY
-char* duplicateAndPrefixStringValue(const char* value,
+char* Value::duplicateAndPrefixStringValue(const char* value,
   unsigned int length) {
 #else
 static inline char* duplicateAndPrefixStringValue(const char* value,
